@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<!--
+             This project is using the Portico Build System
+             https://github.com/timpokorny/build-skeleton
+
+                                  888                                      
+                                  888                                      
+                                  888                                      
+  .d8888b   .d88b.  88888b.d88b.  88888b.  888d888 .d88b.  888d888 .d88b.  
+  88K      d88""88b 888 "888 "88b 888 "88b 888P"  d8P  Y8b 888P"  d88""88b 
+  "Y8888b. 888  888 888  888  888 888  888 888    88888888 888    888  888 
+       X88 Y88..88P 888  888  888 888 d88P 888    Y8b.     888    Y88..88P 
+   88888P'  "Y88P"  888  888  888 88888P"  888     "Y8888  888     "Y88P"  
+                                                                      
+
+         File: profiles/linux/installer.xml
+      Purpose: Defines tasks to build the linux installation packages.
+-->
+<project name="installer.linux">
+
+	<!-- ================================================================================= -->
+	<!--                                 General Settings                                  -->
+	<!-- ================================================================================= -->
+	<description>
+		Generic Zip-File "installer" generator.
+	</description>
+
+	<!-- ================================================================================= -->
+	<!--                             Installer Creation Targets                            -->
+	<!-- ================================================================================= -->
+	<target name="installer" extensionOf="master.installer" depends="zip.win64,zip.linux64">
+	</target>
+
+	<!--                                    -->
+	<!-- Windows 64-bit Zip File Generation -->
+	<!--                                    -->
+	<target name="zip.win64"  if="platform.windows">
+		<!-- generate the tarball with the sandbox and the JRE in it -->
+		<!-- we handle lib/bin separately so we can ensure only 64-bit stuff gets in -->
+		<zip destfile="${dist.dir}/${dist.name}-win64.zip">
+			<zipfileset dir="${sandbox.dir}"
+			            includes="**/*"
+			            excludes=""
+			            prefix="${dist.name}"/>
+		</zip>
+	</target>
+	
+	
+	<!--                                       -->
+	<!-- Linux (64-bit JRE) Tarball Generation -->
+	<!--                                       -->
+	<target name="zip.linux64" if="platform.linux">
+		<!-- Generate the tarball with the sandbox and the JRE in it -->
+		<!-- We have to use exec as the result tar task gives us problems with
+		     permissions and symlinks -->
+		<property name="tarball.file" location="${dist.dir}/${dist.name}-linux64.tar.gz"/>
+
+		<echo>Creating tarball: ${tarball.file}</echo>
+		<exec executable="tar" dir="${dist.dir}" failonerror="true">
+			<arg line="-czpf ${tarball.file} ./${dist.name}"/>
+		</exec>
+	</target>
+
+</project>
+
