@@ -179,6 +179,10 @@ public class PacketInterpreter
 			InetAddress sourceAddr = InetAddress.getByAddress( in.readNBytes(4) );
 			InetAddress destAddr = InetAddress.getByAddress( in.readNBytes(4) );
 			
+			int flags = (flagsAndOffset & 0xE000) >> 13;
+			int offset = flagsAndOffset & 0x1FFF;
+			
+			
 			// Options don't appear to be used that much, so we'll skip over them for simplicity.
 			// If they're ever needed, then they would be interpreted here.
 			if( ihl > 5 )
@@ -191,8 +195,8 @@ public class PacketInterpreter
 			Ip4Layer me = new Ip4Layer( parent, 
 			                            tos, 
 			                            identification, 
-			                            flagsAndOffset, 
-			                            proto, 
+			                            flags, 
+			                            offset, 
 			                            ttl, 
 			                            proto,
 			                            checksum, 
