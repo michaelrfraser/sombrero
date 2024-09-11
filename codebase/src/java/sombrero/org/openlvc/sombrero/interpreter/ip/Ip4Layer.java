@@ -15,9 +15,11 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package org.openlvc.sombrero.interpreter;
+package org.openlvc.sombrero.interpreter.ip;
 
 import java.net.InetAddress;
+
+import org.openlvc.sombrero.interpreter.ProtocolLayer;
 
 /**
  * Represents Internet Protocol v4 information defined within a network packet
@@ -115,6 +117,23 @@ public class Ip4Layer extends ProtocolLayer
 	public int getFlags()
 	{
 		return this.flags;
+	}
+	
+	/**
+	 * @return the value of this IP Packet's More Fragments flag
+	 */
+	public boolean isMoreFragments()
+	{
+		return (this.flags & 0x1) != 0;
+	}
+	
+	/**
+	 * @return <code>true</code> if this packet is part of a fragment sequence, or 
+	 *         <code>false</code> if it is self-contained
+	 */
+	public boolean isPartOfFragmentSequence()
+	{
+		return isMoreFragments() || getFragmentOffset() > 0;
 	}
 	
 	/**

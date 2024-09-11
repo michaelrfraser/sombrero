@@ -24,6 +24,9 @@ import java.util.function.Consumer;
 
 import org.openlvc.sombrero.PcapConstants;
 import org.openlvc.sombrero.block.EnhancedPacketBlock;
+import org.openlvc.sombrero.interpreter.ip.Ip4Layer;
+import org.openlvc.sombrero.interpreter.ip.Ip4FragmentManager;
+import org.openlvc.sombrero.interpreter.ip.UdpLayer;
 import org.openlvc.sombrero.io.Endianness;
 import org.openlvc.sombrero.io.PcapInputStream;
 
@@ -46,14 +49,21 @@ public class PacketInterpreter
 	//----------------------------------------------------------
 	//                   INSTANCE VARIABLES
 	//----------------------------------------------------------
-	private Consumer<EthernetLayer>       ethernetConsumer;
-	private Consumer<RawLayer>            rawConsumer;
-	private Consumer<Ip4Layer>            ip4Consumer;
-	private Consumer<UdpLayer>            udpConsumer;
+	private Consumer<PacketLayer>              packetConsumer;
+	private Consumer<EthernetLayer>            ethernetConsumer;
+	private Consumer<RawLayer>                 rawConsumer;
+	private Consumer<Ip4Layer>                 ip4Consumer;
+	private Consumer<UdpLayer>                 udpConsumer;
+	
+	private Ip4FragmentManager                 ipFragmentManager;
 
 	//----------------------------------------------------------
 	//                      CONSTRUCTORS
 	//----------------------------------------------------------
+	public PacketInterpreter()
+	{
+		this.ipFragmentManager = new Ip4FragmentManager();
+	}
 
 	//----------------------------------------------------------
 	//                    INSTANCE METHODS
@@ -68,6 +78,10 @@ public class PacketInterpreter
 	 */
 	public void process( EnhancedPacketBlock packet ) throws IOException
 	{
+		PacketLayer me = new PacketLayer( packet );
+		if( this.packetConsumer != null )
+			this.packetConsumer.accept( me );
+		
 		byte[] packetData = packet.getPacketData();
 		
 		// Ignore truncated packets
@@ -77,11 +91,11 @@ public class PacketInterpreter
 		switch( packet.getInterface().getLinkType() )
 		{
 			case PcapConstants.LINKTYPE_NULL, PcapConstants.LINKTYPE_ETHERNET:
-				processEthernet( packetData );
+				processEthernet( me, packetData );
 				break;
 			
 			case PcapConstants.LINKTYPE_RAW:
-				processRaw( packetData );
+				processRaw( me, packetData );
 				break;
 			
 			// Still unsure whether this should either be ignored, or reported back through an
@@ -90,6 +104,10 @@ public class PacketInterpreter
 			default:
 				throw new IllegalArgumentException( "unsupported link type "+packet.getInterface().getLinkType() );
 		}
+		
+		// Keep the TTL of outstanding IP4 Fragment sequences ticking along so we're not holding
+		// out-date sequences forever
+		this.ipFragmentManager.tickTtl();
 	}
 
 	/**
@@ -103,7 +121,7 @@ public class PacketInterpreter
 	 * 
 	 * @see #onEthernet(Consumer)
 	 */
-	private void processEthernet( byte[] data ) throws IOException
+	private void processEthernet( ProtocolLayer parent, byte[] data ) throws IOException
 	{
 		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
 		{
@@ -113,7 +131,11 @@ public class PacketInterpreter
 			byte[] payloadBytes = Arrays.copyOfRange( data, 14, data.length );
 
 			// Notify ethernet consumer
-			EthernetLayer me = new EthernetLayer( destination, source, type, payloadBytes );
+			EthernetLayer me = new EthernetLayer( parent, 
+			                                      destination, 
+			                                      source, 
+			                                      type, 
+			                                      payloadBytes );
 			if( ethernetConsumer != null )
 				ethernetConsumer.accept( me );
 
@@ -134,13 +156,13 @@ public class PacketInterpreter
 	 * 
 	 * @see #onRawFrame(Consumer)
 	 */
-	private void processRaw( byte[] data ) throws IOException
+	private void processRaw( ProtocolLayer parent, byte[] data ) throws IOException
 	{
 		if( data.length < 4 )
 			return;
 		
 		// Notify raw frame consumer
-		RawLayer me = new RawLayer( data );
+		RawLayer me = new RawLayer( parent, data );
 		if( rawConsumer != null )
 			rawConsumer.accept( me );
 		
@@ -161,7 +183,7 @@ public class PacketInterpreter
 	 * 
 	 * @see #onIp4(Consumer)
 	 */
-	public void processIPv4( ProtocolLayer parent, byte[] data ) throws IOException
+	private void processIPv4( ProtocolLayer parent, byte[] data ) throws IOException
 	{
 		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
 		{
@@ -181,7 +203,6 @@ public class PacketInterpreter
 			
 			int flags = (flagsAndOffset & 0xE000) >> 13;
 			int offset = flagsAndOffset & 0x1FFF;
-			
 			
 			// Options don't appear to be used that much, so we'll skip over them for simplicity.
 			// If they're ever needed, then they would be interpreted here.
@@ -204,12 +225,20 @@ public class PacketInterpreter
 			                            destAddr, 
 			                            payloadBytes );
 			
+			// Notify IP4 Consumer
 			if( ip4Consumer != null )
 				ip4Consumer.accept( me );
 			
-			// Find processor for next level 
+			// IP4 allows fragmentation over multiple frames, which is handled by the IP Fragment 
+			// Manager. If the result is an incomplete sequence (e.g. more fragments to come) then
+			// we don't have enough data to pass up the stack, so exit here.
+			Ip4FragmentManager.SequenceResult result = ipFragmentManager.processFrame( me );
+			if( !result.isComplete() )
+				return;
+			
+			// Find processor for next level
 			if( proto == PcapConstants.IPPROTO_UDP )
-				processUdp( me, payloadBytes );
+				processUdp( me, result.getPayload() );
 		}
 	}
 	
@@ -224,7 +253,7 @@ public class PacketInterpreter
 	 * 
 	 * @see onUdp
 	 */
-	public void processUdp( ProtocolLayer parent, byte[] data ) throws IOException
+	private void processUdp( ProtocolLayer parent, byte[] data ) throws IOException
 	{
 		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
 		{
@@ -246,6 +275,20 @@ public class PacketInterpreter
 	////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// Accessor and Mutator Methods ///////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////
+	/**
+	 * Registers a function that will be called whenever an {@link EnhancedPacketBlock} is
+	 * submitted to the interpreter for processing
+	 *  
+	 * @param consumer the function to be called when an {@link EnhancedPacketBlock} is
+	 *                 submitted
+	 * 
+	 * @see EnhancedPacketBlock
+	 */
+	public void onPacket( Consumer<PacketLayer> consumer )
+	{
+		this.packetConsumer = consumer;
+	}
+	
 	/**
 	 * Registers a function that will be called whenever an Ethernet frame is discovered during
 	 * packet interpretation.
