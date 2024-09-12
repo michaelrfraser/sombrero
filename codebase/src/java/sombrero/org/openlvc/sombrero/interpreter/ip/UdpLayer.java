@@ -15,12 +15,17 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package org.openlvc.sombrero.interpreter;
+package org.openlvc.sombrero.interpreter.ip;
+
+import java.net.DatagramPacket;
+import java.net.InetAddress;
+
+import org.openlvc.sombrero.interpreter.ProtocolLayer;
 
 /**
- * Represents Ethernet level information defined within a network packet 
+ * Represents User Datagram Protocol information defined within a network packet
  */
-public class EthernetLayer extends ProtocolLayer
+public class UdpLayer extends ProtocolLayer
 {
 	//----------------------------------------------------------
 	//                    STATIC VARIABLES
@@ -29,34 +34,32 @@ public class EthernetLayer extends ProtocolLayer
 	//----------------------------------------------------------
 	//                   INSTANCE VARIABLES
 	//----------------------------------------------------------
-	private byte[] destAddress;
-	private byte[] sourceAddress;
-	private int type;
+	private int sourcePort;
+	private int destPort;
+	private int checksum;
 	
 	//----------------------------------------------------------
 	//                      CONSTRUCTORS
 	//----------------------------------------------------------
 	/**
-	 * Constructor for EthernetLayer with specified values
-	 * <p/>
-	 * See https://en.wikipedia.org/wiki/EtherType for a complete list of ethertypes
-	 *  
-	 * @param destAddress the destination MAC address
-	 * @param sourceAddress the source MAC addresss
-	 * @param type the ethertype of the data contained within this frame 
-	 * @param data the data payload of this frame
+	 * Constructor for UdpLayer with specified values
+	 * 
+	 * @param parent the parent layer in the protocol stack (usually IPv4 or IPv6)
+	 * @param sourcePort the sender's port number
+	 * @param destPort the receiver's port number
+	 * @param checksum the packet's checksum
+	 * @param data the packet's data payload
 	 */
-	public EthernetLayer( ProtocolLayer parent,
-	                      byte[] destAddress, 
-	                      byte[] sourceAddress, 
-	                      int type, 
-	                      byte[] data )
+	public UdpLayer( ProtocolLayer parent, 
+	                 int sourcePort, 
+	                 int destPort, 
+	                 int checksum, 
+	                 byte[] data )
 	{
 		super( parent, data );
-		
-		this.destAddress = destAddress;
-		this.sourceAddress = sourceAddress;
-		this.type = type;
+		this.sourcePort = sourcePort;
+		this.destPort = destPort;
+		this.checksum = checksum;
 	}
 
 	//----------------------------------------------------------
@@ -67,29 +70,44 @@ public class EthernetLayer extends ProtocolLayer
 	/////////////////////////////// Accessor and Mutator Methods ///////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////
 	/**
-	 * @return the MAC address of the network interface this packet was sent to
+	 * @return the sender's port number
 	 */
-	public byte[] getDestAddress()
+	public int getSourcePort()
 	{
-		return this.destAddress;
+		return this.sourcePort;
 	}
 	
 	/**
-	 * @return the MAC address of the network interface this packet was sent from
+	 * @return the receiver's port number
 	 */
-	public byte[] getSourceAddress()
+	public int getDestPort()
 	{
-		return this.sourceAddress;
+		return this.destPort;
 	}
 	
 	/**
-	 * See https://en.wikipedia.org/wiki/EtherType for a complete list of ethertypes
-	 * 
-	 * @return the ethertype of the data contained within this frame's data payload
+	 * @return the packet's checksum
 	 */
-	public int getType()
+	public int getChecksum()
 	{
-		return this.type;
+		return this.checksum;
+	}
+	
+	/**
+	 * @return a {@link DatagramPacket} representation of this UDP packet
+	 */
+	public DatagramPacket getDatagram()
+	{
+		// If IPv6 support is added, then we should also add a lookup for the Ip6 parent
+		Ip4Layer ip4Layer = this.findParent( Ip4Layer.class );
+		InetAddress destAddr = null;
+		if( ip4Layer != null )
+			destAddr = ip4Layer.getDestAddress();
+		
+		return new DatagramPacket( getData(), 
+		                           getData().length, 
+		                           destAddr, 
+		                           this.destPort );
 	}
 	
 	//----------------------------------------------------------

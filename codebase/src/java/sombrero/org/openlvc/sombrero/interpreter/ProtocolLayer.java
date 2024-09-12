@@ -17,6 +17,8 @@
  */
 package org.openlvc.sombrero.interpreter;
 
+import org.openlvc.sombrero.block.EnhancedPacketBlock;
+
 /**
  * Abstract data type for conveying a layer within a network protocol stack.
  * <p/>
@@ -43,7 +45,7 @@ public abstract class ProtocolLayer
 	//                      CONSTRUCTORS
 	//----------------------------------------------------------
 	/**
-	 * ProtocolLayer constructor for child layers.
+	 * ProtocolLayer constructor
 	 * 
 	 * @param parent the parent layer in the stack
 	 * @param data the layer's data payload
@@ -52,16 +54,6 @@ public abstract class ProtocolLayer
 	{
 		this.parent = parent;
 		this.data = data;
-	}
-	
-	/**
-	 * ProtocolLayer constructor for top-level layers (e.g. Ethernet)
-	 * 
-	 * @param data the layer's data payload
-	 */
-	protected ProtocolLayer( byte[] data )
-	{
-		this( null, data );
 	}
 
 	//----------------------------------------------------------
@@ -103,6 +95,17 @@ public abstract class ProtocolLayer
 		return this.data;
 	}
 
+	/** 
+	 * @return the {@link EnhancedPacketBlock} that this protocol layer is a part of
+	 */
+	public EnhancedPacketBlock getContext()
+	{
+		if( this.parent == null )
+			throw new IllegalStateException( "no parent" );
+		
+		return this.parent.getContext();
+	}
+	
 	//----------------------------------------------------------
 	//                     STATIC METHODS
 	//----------------------------------------------------------

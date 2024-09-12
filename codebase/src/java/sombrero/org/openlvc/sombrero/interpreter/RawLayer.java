@@ -37,9 +37,9 @@ public class RawLayer extends ProtocolLayer
 	//----------------------------------------------------------
 	//                      CONSTRUCTORS
 	//----------------------------------------------------------
-	public RawLayer( byte[] data )
+	public RawLayer( ProtocolLayer parent, byte[] data )
 	{
-		super( data );
+		super( parent, data );
 	}
 	
 	//----------------------------------------------------------
