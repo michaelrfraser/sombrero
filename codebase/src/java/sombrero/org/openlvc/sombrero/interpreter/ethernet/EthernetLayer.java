@@ -15,7 +15,9 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package org.openlvc.sombrero.interpreter;
+package org.openlvc.sombrero.interpreter.ethernet;
+
+import org.openlvc.sombrero.interpreter.ProtocolLayer;
 
 /**
  * Represents Ethernet level information defined within a network packet 
@@ -62,6 +64,21 @@ public class EthernetLayer extends ProtocolLayer
 	//----------------------------------------------------------
 	//                    INSTANCE METHODS
 	//----------------------------------------------------------
+	@Override
+	public String toString()
+	{
+		StringBuilder etherTypeBuilder = new StringBuilder();
+		String etherTypeName = EthernetConstants.getEtherTypeName( this.type, true );
+		etherTypeBuilder.append( this.type );
+		if( etherTypeName != null )
+			etherTypeBuilder.append( String.format( "(%s)", etherTypeName) );
+		
+		return String.format( "Ethernet %s -> %s Type=%s Len=%d", 
+		                      EthernetConstants.formatMacAddress(sourceAddress),
+		                      EthernetConstants.formatMacAddress(destAddress),
+		                      etherTypeBuilder.toString(),
+		                      this.getData().length );
+	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// Accessor and Mutator Methods ///////////////////////////////

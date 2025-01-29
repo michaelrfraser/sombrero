@@ -15,15 +15,16 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package org.openlvc.sombrero.interpreter;
+package org.openlvc.sombrero.interpreter.arp;
 
-import org.openlvc.sombrero.block.EnhancedPacketBlock;
+import java.net.InetAddress;
+
+import org.openlvc.sombrero.interpreter.ProtocolLayer;
 
 /**
- * A psuedo {@link ProtocolLayer} that is used as the root node of a layer stack, indicating
- * the {@link EnhancedPacketBlock} that the stack was built from. 
+ * Represents Address Resolution Protocol information defined within a network packet
  */
-public class PacketLayer extends ProtocolLayer
+public class ArpLayer extends ProtocolLayer
 {
 	//----------------------------------------------------------
 	//                    STATIC VARIABLES
@@ -32,15 +33,40 @@ public class PacketLayer extends ProtocolLayer
 	//----------------------------------------------------------
 	//                   INSTANCE VARIABLES
 	//----------------------------------------------------------
-	private EnhancedPacketBlock packet;
+	private int hardwareType;
+	private int protocolType;
+	private int operation;
+	private byte[] senderHardwareAddress;
+	private byte[] senderProtocolAddress;
+	private byte[] targetHardwareAddress;
+	private byte[] targetProtocolAddress;
 	
 	//----------------------------------------------------------
 	//                      CONSTRUCTORS
 	//----------------------------------------------------------
-	public PacketLayer( EnhancedPacketBlock packet )
+	/**
+	 * Constructor for ArpLayer with specified values
+	 * 
+	 * @param parent the parent layer in the protocol stack (usually Ethernet or Raw)
+	 * @param data the ARP packet's data
+	 */
+	public ArpLayer( ProtocolLayer parent,
+	                 int hardwareType,
+	                 int protocolType,
+	                 int operation,
+	                 byte[] senderHardwareAddress,
+	                 byte[] senderProtocolAddress,
+	                 byte[] targetHardwareAddress,
+	                 byte[] targetProtocolAddress )
 	{
-		super( null, packet.getPacketData() );
-		this.packet = packet;
+		super( parent, null );
+		this.hardwareType = hardwareType;
+		this.protocolType = protocolType;
+		this.operation = operation;
+		this.senderHardwareAddress = senderHardwareAddress;
+		this.senderProtocolAddress = senderProtocolAddress;
+		this.targetHardwareAddress = targetHardwareAddress;
+		this.targetProtocolAddress = targetProtocolAddress;
 	}
 
 	//----------------------------------------------------------
@@ -49,26 +75,14 @@ public class PacketLayer extends ProtocolLayer
 	@Override
 	public String toString()
 	{
-		return toString( this.packet );
+		return String.format( "ARP: " );
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// Accessor and Mutator Methods ///////////////////////////////
 	////////////////////////////////////////////////////////////////////////////////////////////
-	@Override
-	public EnhancedPacketBlock getContext()
-	{
-		return this.packet;
-	}
 	
 	//----------------------------------------------------------
 	//                     STATIC METHODS
 	//----------------------------------------------------------
-	public static String toString( EnhancedPacketBlock packet )
-	{
-		return String.format( "Pcap EPB: %d bytes on wire, %d bytes captured on interface %s", 
-		                      packet.getOriginalLength(),
-		                      packet.getPacketData().length,
-		                      packet.getInterface().getName() );
-	}
 }

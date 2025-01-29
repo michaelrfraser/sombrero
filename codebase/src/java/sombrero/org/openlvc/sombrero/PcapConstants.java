@@ -40,13 +40,6 @@ public class PcapConstants
 	public static final long BLOCKTYPE_EPB = 0x00000006L;
 	
 	//
-	// Ethernet Types (not complete)
-	// See https://en.wikipedia.org/wiki/EtherType for complete list
-	//
-	public static final int ETHERTYPE_IP4 = 0x0800;
-	public static final int ETHERTYPE_IP6 = 0x86DD;
-	
-	//
 	// Link Types (not complete)
 	// See `PCAP and PCAPNG LINKTYPE Registry` for complete list 
 	//
@@ -93,13 +86,6 @@ public class PcapConstants
 	public static final int OPT_ISB_FILTERACCEPT = 6;
 	public static final int OPT_ISB_OSDROP       = 7;
 	public static final int OPT_ISB_USRDELIV     = 8;
-	
-	//
-	// IP Protocol Types (incomplete)
-	// See https://en.wikipedia.org/wiki/List_of_IP_protocol_numbers for complete list
-	//
-	public static final int IPPROTO_TCP = 6;
-	public static final int IPPROTO_UDP = 17;
 	
 	//
 	// SnapLen special values

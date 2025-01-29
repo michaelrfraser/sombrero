@@ -48,7 +48,7 @@ public abstract class ProtocolLayer
 	 * ProtocolLayer constructor
 	 * 
 	 * @param parent the parent layer in the stack
-	 * @param data the layer's data payload
+	 * @param data the layer's data payload (if any)
 	 */
 	protected ProtocolLayer( ProtocolLayer parent, byte[] data )
 	{

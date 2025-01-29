@@ -19,14 +19,24 @@ package org.openlvc.sombrero.interpreter;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
 import java.util.function.Consumer;
 
 import org.openlvc.sombrero.PcapConstants;
 import org.openlvc.sombrero.block.EnhancedPacketBlock;
 import org.openlvc.sombrero.interpreter.ip.Ip4Layer;
+import org.openlvc.sombrero.interpreter.ip.IpConstants;
+import org.openlvc.sombrero.interpreter.arp.ArpLayer;
+import org.openlvc.sombrero.interpreter.ethernet.EthernetConstants;
+import org.openlvc.sombrero.interpreter.ethernet.EthernetLayer;
 import org.openlvc.sombrero.interpreter.ip.Ip4FragmentManager;
-import org.openlvc.sombrero.interpreter.ip.UdpLayer;
+import org.openlvc.sombrero.interpreter.tcp.TcpConstants;
+import org.openlvc.sombrero.interpreter.tcp.TcpLayer;
+import org.openlvc.sombrero.interpreter.tcp.TcpOption;
+import org.openlvc.sombrero.interpreter.udp.UdpLayer;
 import org.openlvc.sombrero.io.Endianness;
 import org.openlvc.sombrero.io.PcapInputStream;
 
@@ -52,8 +62,10 @@ public class PacketInterpreter
 	private Consumer<PacketLayer>              packetConsumer;
 	private Consumer<EthernetLayer>            ethernetConsumer;
 	private Consumer<RawLayer>                 rawConsumer;
+	private Consumer<ArpLayer>                 arpConsumer;
 	private Consumer<Ip4Layer>                 ip4Consumer;
 	private Consumer<UdpLayer>                 udpConsumer;
+	private Consumer<TcpLayer>                 tcpConsumer;
 	
 	private Ip4FragmentManager                 ipFragmentManager;
 
@@ -71,12 +83,16 @@ public class PacketInterpreter
 	/**
 	 * Processes the contents of an {@link EnhancedPacketBlock}, notifying registered consumers
 	 * as corresponding protocol layers are found.
+	 * <p/>
+	 * The in-most protocol layer that the interpreter could successfully interpret will be returned.
 	 * 
 	 * @param packet the packet to process
+	 * @return the in-most protocol layer contained within the packet that the interpreter could
+	 *         understand
 	 * @throws IOException if there was an error reading the contents of the packet
 	 * @throws IllegalArgumentException if the packet was captured from an unsupported link type
 	 */
-	public void process( EnhancedPacketBlock packet ) throws IOException
+	public ProtocolLayer process( EnhancedPacketBlock packet ) throws IOException
 	{
 		PacketLayer me = new PacketLayer( packet );
 		if( this.packetConsumer != null )
@@ -86,16 +102,17 @@ public class PacketInterpreter
 		
 		// Ignore truncated packets
 		if( packet.isTruncated() )
-			return;
+			return me;
 		
+		ProtocolLayer deepestLayer = me;
 		switch( packet.getInterface().getLinkType() )
 		{
 			case PcapConstants.LINKTYPE_NULL, PcapConstants.LINKTYPE_ETHERNET:
-				processEthernet( me, packetData );
+				deepestLayer = processEthernet( me, packetData );
 				break;
 			
 			case PcapConstants.LINKTYPE_RAW:
-				processRaw( me, packetData );
+				deepestLayer = processRaw( me, packetData );
 				break;
 			
 			// Still unsure whether this should either be ignored, or reported back through an
@@ -108,6 +125,8 @@ public class PacketInterpreter
 		// Keep the TTL of outstanding IP4 Fragment sequences ticking along so we're not holding
 		// out-date sequences forever
 		this.ipFragmentManager.tickTtl();
+		
+		return deepestLayer;
 	}
 
 	/**
@@ -116,12 +135,14 @@ public class PacketInterpreter
 	 * This method will notify the registered ethernet consumer of the frame, and will attempt
 	 * to find a child-processor method for the data contained within
 	 * 
+	 * @param parent the parent {@link ProtocolLayer} that contains the ethernet layer
 	 * @param data the ethernet data in binary form
+	 * @return the in-most layer within this ethernet packet that the interpreter could understand
 	 * @throws IOException if there was an error reading the ethernet data
 	 * 
 	 * @see #onEthernet(Consumer)
 	 */
-	private void processEthernet( ProtocolLayer parent, byte[] data ) throws IOException
+	private ProtocolLayer processEthernet( ProtocolLayer parent, byte[] data ) throws IOException
 	{
 		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
 		{
@@ -139,9 +160,13 @@ public class PacketInterpreter
 			if( ethernetConsumer != null )
 				ethernetConsumer.accept( me );
 
+			ProtocolLayer inmostLayer = me;
+			
 			// Find processor for next level 
-			if( type == PcapConstants.ETHERTYPE_IP4 )
-				processIPv4( me, payloadBytes );
+			if( type == EthernetConstants.ETHERTYPE_IP4 )
+				inmostLayer = processIPv4( me, payloadBytes );
+			
+			return inmostLayer;
 		}
 	}
 	
@@ -151,25 +176,31 @@ public class PacketInterpreter
 	 * This method will notify the registered raw consumer of the frame, and will attempt
 	 * to find a child-processor method for the data contained within
 	 * 
+	 * @param parent the parent {@link ProtocolLayer} that contains the Raw layer
 	 * @param data the raw IP data in binary form
+	 * @return the in-most layer within this ethernet packet that the interpreter could understand
 	 * @throws IOException if there was an error reading the raw IP data
 	 * 
 	 * @see #onRawFrame(Consumer)
 	 */
-	private void processRaw( ProtocolLayer parent, byte[] data ) throws IOException
+	private ProtocolLayer processRaw( ProtocolLayer parent, byte[] data ) throws IOException
 	{
-		if( data.length < 4 )
-			return;
-		
 		// Notify raw frame consumer
 		RawLayer me = new RawLayer( parent, data );
 		if( rawConsumer != null )
 			rawConsumer.accept( me );
 		
+		ProtocolLayer inmostLayer = me;
+		
+		if( data.length < 4 )
+			return me;
+		
 		// Find processor for next level by peeking version byte to determine route
 		int version = data[0] >> 4;
 		if( version == 4 )
-			processIPv4( me, data );
+			inmostLayer = processIPv4( me, data );
+		
+		return inmostLayer;
 	}
 	
 	/**
@@ -178,12 +209,14 @@ public class PacketInterpreter
 	 * This method will notify the registered IPv4 consumer of the frame, and will attempt
 	 * to find a child-processor method for the data contained within
 	 * 
+	 * @param parent the {@link ProtocolLayer} that contains this IPv4 layer
 	 * @param data the IPv4 data in binary form
+	 * @return the in-most layer within this IPv4 packet that the interpreter could understand
 	 * @throws IOException if there was an error reading the IPv4 data
 	 * 
 	 * @see #onIp4(Consumer)
 	 */
-	private void processIPv4( ProtocolLayer parent, byte[] data ) throws IOException
+	private ProtocolLayer processIPv4( ProtocolLayer parent, byte[] data ) throws IOException
 	{
 		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
 		{
@@ -192,6 +225,12 @@ public class PacketInterpreter
 			
 			int tos = in.readUint8();
 			int totalLength = in.readUint16();
+			
+			// If total length of zero is presumed to be because of TCP Segmentation Offload
+			// Just use the data length instead
+			if( totalLength == 0 )
+				totalLength = data.length;
+			
 			int identification = in.readUint16();
 			int flagsAndOffset = in.readUint16();
 			int ttl = in.readUint8();
@@ -234,11 +273,24 @@ public class PacketInterpreter
 			// we don't have enough data to pass up the stack, so exit here.
 			Ip4FragmentManager.SequenceResult result = ipFragmentManager.processFrame( me );
 			if( !result.isComplete() )
-				return;
+				return me;
+			
+			ProtocolLayer inmostLayer = me;
 			
 			// Find processor for next level
-			if( proto == PcapConstants.IPPROTO_UDP )
-				processUdp( me, result.getPayload() );
+			switch( proto )
+			{
+				case IpConstants.IPPROTO_UDP:
+					inmostLayer = processUdp( me, result.getPayload() );
+					break;
+				case IpConstants.IPPROTO_TCP:
+					inmostLayer = processTcp( me, result.getPayload() );
+					break;
+				default:
+					break;
+			}
+			
+			return inmostLayer;
 		}
 	}
 	
@@ -248,12 +300,14 @@ public class PacketInterpreter
 	 * This method will notify the registered UDP consumer of the frame, and will attempt
 	 * to find a child-processor method for the data contained within
 	 * 
+	 * @param parent the {@link ProtocolLayer} that contains this UDP layer
 	 * @param data the UDP data in binary form
+	 * @return the in-most layer within this UDP packet that the interpreter could understand
 	 * @throws IOException if there was an error reading the UDP data
 	 * 
 	 * @see onUdp
 	 */
-	private void processUdp( ProtocolLayer parent, byte[] data ) throws IOException
+	private ProtocolLayer processUdp( ProtocolLayer parent, byte[] data ) throws IOException
 	{
 		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
 		{
@@ -269,7 +323,100 @@ public class PacketInterpreter
 			UdpLayer me = new UdpLayer( parent, sourcePort, destPort, checksum, udpPayload );
 			if( this.udpConsumer != null )
 				this.udpConsumer.accept( me );
+			
+			return me;
 		}
+	}
+	
+	/**
+	 * Interprets binary data as a TCP frame.
+	 * <p/>
+	 * This method will notify the registered TCP consumer of the frame, and will attempt
+	 * to find a child-processor method for the data contained within
+	 * 
+	 * @param parent the {@link ProtocolLayer} that contains this TCP layer
+	 * @param data the TCP data in binary form
+	 * @return the in-most layer within this TCP packet that the interpreter could understand
+	 * @throws IOException if there was an error reading the TCP data
+	 * 
+	 * @see onTcp
+	 */
+	private ProtocolLayer processTcp( ProtocolLayer parent, byte[] data ) throws IOException
+	{
+		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
+		{
+			int sourcePort = in.readUint16();
+			int destPort = in.readUint16();
+			long seqNumber = in.readUint32();
+			long ackNumber = in.readUint32();
+			int dataOffset = in.readUnsignedByte() >> 4;
+			int flags = in.readUnsignedByte();
+			int window = in.readUint16();
+			int checksum = in.readUint16();
+			int urgentPointer = in.readUint16();
+			
+			List<TcpOption> options = new ArrayList<>();
+			
+			// TCP Options
+			if( dataOffset > 5 )
+			{
+				int optionSectionLength = (dataOffset - 5) * 4;
+				byte[] optionData = in.readNBytes( optionSectionLength );
+				options.addAll( processTcpOptions(optionData) );
+			}
+			
+			int payloadLen = data.length - (dataOffset * 4);
+			byte[] payload = in.readNBytes( payloadLen );
+			
+			// Notify TCP consumer
+			TcpLayer me = new TcpLayer( parent, 
+			                            sourcePort, 
+			                            destPort, 
+			                            seqNumber, 
+			                            ackNumber, 
+			                            flags, 
+			                            window, 
+			                            checksum, 
+			                            urgentPointer, 
+			                            options, 
+			                            payload );
+
+			if( this.tcpConsumer != null )
+				this.tcpConsumer.accept( me );
+			
+			return me;
+		}
+	}
+	
+	private Collection<TcpOption> processTcpOptions( byte[] data ) throws IOException
+	{
+		List<TcpOption> options = new ArrayList<>();
+		try( PcapInputStream in = PcapInputStream.create(data, Endianness.Big) )
+		{
+			int optionType = in.readUnsignedByte();
+			while( optionType != TcpConstants.TCP_OPT_EOL )
+			{
+				if( optionType != TcpConstants.TCP_OPT_NOOP )
+				{
+					// Option Len is length of the whole structure which includes size of type 
+					// and length fields as well as the size of the data field
+					int optionLen = in.readUnsignedByte();
+					int optionDataLen = optionLen - 2;
+					byte[] optionData = in.readNBytes( optionDataLen );
+
+					options.add( new TcpOption(optionType, optionData) );
+				}
+				
+				// Can't rely on TCP_OPT_EOL being present it seems :(
+				if( in.available() == 0 )
+					break;
+				
+				// Read next option type
+				optionType = in.readUnsignedByte();
+			}
+		}
+
+		return options;
 	}
 	
 	////////////////////////////////////////////////////////////////////////////////////////////
@@ -339,6 +486,19 @@ public class PacketInterpreter
 	public void onUdp( Consumer<UdpLayer> consumer )
 	{
 		this.udpConsumer = consumer;
+	}
+	
+	/**
+	 * Registers a function that will be called whenever an TCP frame is discovered during
+	 * packet interpretation.
+	 *  
+	 * @param consumer the function to be called when a TCP frame is discovered
+	 * 
+	 * @see TcpLayer
+	 */
+	public void onTcp( Consumer<TcpLayer> consumer )
+	{
+		this.tcpConsumer = consumer;
 	}
 	
 	//----------------------------------------------------------

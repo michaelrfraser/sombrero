@@ -15,12 +15,13 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
-package org.openlvc.sombrero.interpreter.ip;
+package org.openlvc.sombrero.interpreter.udp;
 
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 
 import org.openlvc.sombrero.interpreter.ProtocolLayer;
+import org.openlvc.sombrero.interpreter.ip.Ip4Layer;
 
 /**
  * Represents User Datagram Protocol information defined within a network packet
@@ -65,6 +66,14 @@ public class UdpLayer extends ProtocolLayer
 	//----------------------------------------------------------
 	//                    INSTANCE METHODS
 	//----------------------------------------------------------
+	@Override
+	public String toString()
+	{
+		return String.format( "UDP: %d -> %d Len=%d", 
+		                      this.sourcePort,
+		                      this.destPort,
+		                      this.getData().length );
+	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// Accessor and Mutator Methods ///////////////////////////////
@@ -86,7 +95,7 @@ public class UdpLayer extends ProtocolLayer
 	}
 	
 	/**
-	 * @return the packet's checksum
+	 * @return the packet's UDP layer checksum
 	 */
 	public int getChecksum()
 	{

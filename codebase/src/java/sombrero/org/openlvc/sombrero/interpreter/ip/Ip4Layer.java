@@ -41,7 +41,7 @@ public class Ip4Layer extends ProtocolLayer
 	private int protocol;
 	private int checksum;
 	private InetAddress sourceAddr;
-	private InetAddress destAddress;
+	private InetAddress destAddr;
 	
 	//----------------------------------------------------------
 	//                      CONSTRUCTORS
@@ -85,12 +85,27 @@ public class Ip4Layer extends ProtocolLayer
 		this.protocol = protocol;
 		this.checksum = checksum;
 		this.sourceAddr = sourceAddress;
-		this.destAddress = destAddress;
+		this.destAddr = destAddress;
 	}
 
 	//----------------------------------------------------------
 	//                    INSTANCE METHODS
 	//----------------------------------------------------------
+	@Override
+	public String toString()
+	{
+		StringBuilder protoBuilder = new StringBuilder();
+		String protoName = IpConstants.getIpProtoName( this.protocol, true );
+		protoBuilder.append( this.protocol );
+		if( protoName != null )
+			protoBuilder.append(String.format( "(%s)", protoName) );
+			
+		return String.format( "IPv4: %s -> %s Proto=%s Len=%d", 
+		                      this.sourceAddr.getHostAddress(),
+		                      this.destAddr.getHostAddress(),
+		                      protoBuilder.toString(),
+		                      this.getData().length );
+	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////
 	/////////////////////////////// Accessor and Mutator Methods ///////////////////////////////
@@ -154,6 +169,8 @@ public class Ip4Layer extends ProtocolLayer
 	
 	/**
 	 * @return the protocol that is encapsulated within the IP packet's data payload
+	 * 
+	 * @see IpConstants
 	 */
 	public int getProtocol()
 	{
@@ -161,7 +178,7 @@ public class Ip4Layer extends ProtocolLayer
 	}
 	
 	/**
-	 * @return the header checksum
+	 * @return the packet's IP layer checksum
 	 */
 	public int getChecksum()
 	{
@@ -181,7 +198,7 @@ public class Ip4Layer extends ProtocolLayer
 	 */
 	public InetAddress getDestAddress()
 	{
-		return this.destAddress;
+		return this.destAddr;
 	}
 	
 	//----------------------------------------------------------
