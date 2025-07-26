@@ -189,7 +189,6 @@ public class PacketInterpreter
 		{
 			int firstOct = in.readUint8();
 			int ihl = firstOct & 0x0F;
-			
 			int tos = in.readUint8();
 			int totalLength = in.readUint16();
 			int identification = in.readUint16();
@@ -200,6 +199,11 @@ public class PacketInterpreter
 			
 			InetAddress sourceAddr = InetAddress.getByAddress( in.readNBytes(4) );
 			InetAddress destAddr = InetAddress.getByAddress( in.readNBytes(4) );
+			
+			// If the proto is TCP a zero length can be reported due to TCP Segmentation Offload 
+			// (TSO). In this case we can assume the totalLength is the size of the data we received
+			if( proto == PcapConstants.IPPROTO_TCP && totalLength == 0 )
+				totalLength = data.length;
 			
 			int flags = (flagsAndOffset & 0xE000) >> 13;
 			int offset = flagsAndOffset & 0x1FFF;
